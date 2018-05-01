@@ -64,6 +64,8 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	//long time to receive on the channel, all the senders are blocked. With a buffered channel, sends
 	//are blocked when the channel has reached its maximum capacity and receives are blocked when the
 	//channel is empty. Hence the sender has a "buffer" to send on and is not blocked by the "slow" receiver.
+	//In our case the receiver (main goroutine) might be filtering duplicates from a slice, while other goroutines
+	//send on the buffered channel.
 	ch := make(chan result, len(urls))
 	//Check if all URLs in the request are valid and if so spawn a goroutine to fetch data.
 	for _, u := range urls {
@@ -72,7 +74,6 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 			log.Printf("%s returned an error- %v", u, err)
 			continue
 		}
-		log.Println(urls)
 		go fetch(ctx, u, ch)
 	}
 
@@ -82,9 +83,10 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 		case res := <-ch:
 			for _, val := range res.Numbers {
 				//Eliminate duplicates. The rationale behind eliminating duplicates on a per-goroutine basis
-				//as soon we receive on the channel rather accumulating results from all the valid URLs
-				//or after 450ms has elapsed is that - if no goroutine has filled the channel, rather than wasting
-				//precious processor clock on waiting, we may as well remove duplicates during that time.
+				//as soon we receive on the channel rather than accumulating results from all the valid URLs
+				//or after 450ms has elapsed is that - if no other goroutine has filled the channel, rather
+				//than wasting precious processor clock on waiting, we may as well remove duplicates from
+				//the array during that time.
 				if _, ok := visited[val]; !ok {
 					accumulator = append(accumulator, val)
 					visited[val] = struct{}{}
