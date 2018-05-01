@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	//Represents the context timeout. Can be tuned depending on requirements and benchmarks.
+	timeout = 450
+)
+
 //Type which represents the response of the given URLs as well as our response
 type result struct {
 	Numbers []int `json:"numbers"`
@@ -29,9 +34,9 @@ func numberHandler(w http.ResponseWriter, r *http.Request) {
 	//that were spawned for the client.
 	ctx := r.Context()
 	//Since the response needs to be sent on the wire before 500ms, we set the context timeout to 450ms
-	//and use the remaining 50 seconds to sort the array.
-	ctx, cancel := context.WithTimeout(ctx, 450*time.Millisecond)
-	//The cancel signals the gc to collect resources allocated for context timers.
+	//and use the remaining 50ms to sort the array.
+	ctx, cancel := context.WithTimeout(ctx, timeout*time.Millisecond)
+	//The cancel function signals the gc to collect resources allocated for context timers.
 	defer cancel()
 	u := r.URL
 	q := u.Query()
@@ -53,10 +58,12 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	//but since go doesn't provide a set implementation, we use an empty struct so as
 	//to not waste precious memory :) https://play.golang.org/p/ea_19tva-0T
 	visited := make(map[int]struct{})
-	//Buffered channel - So as to not starve the goroutines. Consider a scenario where in one of the
-	//spawned goroutines puts a slice of size 1000000 into our channel. Draining the channel in the main goroutine
-	//and filtering duplicates would take considerable time. If an unbuffered channel was used, all the
-	//goroutines would have to wait until the channel is drained and duplicates removed.
+	//Buffered channel - So as to not block goroutines.
+	//In the case of unbuffered channel, the sender is blocked when the channel is full and receiver
+	//is blocked when the channel is empty. If the receiver is taking a long time to receive on the channel,
+	//all the senders are blocked. With a buffered channel, sends are blocked when the channel has reached
+	//it's maximum capacity and receives are blocked when the channel is empty. Hence the sender has a "buffer"
+	//to send on and is not blocked by the "slow" receiver.
 	ch := make(chan result, len(urls))
 	//Check if all URLs in the request are valid and if so spawn a goroutine to fetch data.
 	for _, u := range urls {
@@ -71,12 +78,12 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	//Loop to drain channel, filter out duplicates and check for timeout.
 	for range urls {
 		select {
-		case r := <-ch:
-			for _, val := range r.Numbers {
-				//Eliminate duplicates. The rationale behind eliminating duplicates on a per goroutine basis
-				//rather than once we have accumulated results from all valid URLs or after 500ms has elapsed
-				//is that - if no goroutine has filled the channel, rather than wasting precious processor clock
-				//on waiting, we may as well remove duplicates.
+		case res := <-ch:
+			for _, val := range res.Numbers {
+				//Eliminate duplicates. The rationale behind eliminating duplicates on a per-goroutine basis
+				//as soon we receive on the channel rather accumulating results from all the valid URLs
+				//or after 450ms has elapsed is that - if no goroutine has filled the channel, rather than wasting
+				//precious processor clock on waiting, we may as well remove duplicates during that time.
 				if _, ok := visited[val]; !ok {
 					accumulator = append(accumulator, val)
 					visited[val] = struct{}{}
