@@ -60,10 +60,10 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	visited := make(map[int]struct{})
 	//Buffered channel - So as to not block goroutines.
 	//In the case of unbuffered channel, the sender is blocked when the channel is full and receiver
-	//is blocked when the channel is empty. If the receiver is taking a long time to receive on the channel,
-	//all the senders are blocked. With a buffered channel, sends are blocked when the channel has reached
-	//it's maximum capacity and receives are blocked when the channel is empty. Hence the sender has a "buffer"
-	//to send on and is not blocked by the "slow" receiver.
+	//is blocked when the channel is empty. If the receiver is busy with other tasks and is taking a
+	//long time to receive on the channel, all the senders are blocked. With a buffered channel, sends
+	//are blocked when the channel has reached its maximum capacity and receives are blocked when the
+	//channel is empty. Hence the sender has a "buffer" to send on and is not blocked by the "slow" receiver.
 	ch := make(chan result, len(urls))
 	//Check if all URLs in the request are valid and if so spawn a goroutine to fetch data.
 	for _, u := range urls {
@@ -72,6 +72,7 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 			log.Printf("%s returned an error- %v", u, err)
 			continue
 		}
+		log.Println(urls)
 		go fetch(ctx, u, ch)
 	}
 

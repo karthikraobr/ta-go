@@ -17,11 +17,14 @@ func Test_numberHandler(t *testing.T) {
 		expected result
 	}{
 		{name: "Simple", handler: simpleHandler(actual), expected: result{Numbers: expected}},
+		{name: "NoParam", handler: nil, expected: result{Numbers: nil}},
+		{name: "InvalidURL", handler: nil, expected: result{Numbers: nil}},
+		{name: "InvalidRequest", handler: nil, expected: result{Numbers: nil}},
+		{name: "RandomURL", handler: nil, expected: result{Numbers: nil}},
 		{name: "SimpleError", handler: errHandler(), expected: result{Numbers: nil}},
 		{name: "SimpleTimeOut", handler: timeOutHandler(actual), expected: result{Numbers: nil}},
 		{name: "JustInTime", handler: justInTimeHandler(actual), expected: result{Numbers: expected}},
 		{name: "ErrorAfterTime", handler: errAfterTimeHandler(), expected: result{Numbers: nil}},
-		{name: "NoParam", handler: nil, expected: result{Numbers: nil}},
 	}
 
 	for _, tc := range tt {
@@ -31,14 +34,31 @@ func Test_numberHandler(t *testing.T) {
 			if tc.handler != nil {
 				ts := httptest.NewServer(http.HandlerFunc(tc.handler))
 				defer ts.Close()
-				req, err = http.NewRequest("GET", "localhost:8000?u="+ts.URL, nil)
+				req, err = http.NewRequest(http.MethodGet, "localhost:8000?u="+ts.URL, nil)
 				if err != nil {
 					t.Fatalf("could not create request: %v", err)
 				}
 			} else {
-				req, err = http.NewRequest("GET", "localhost:8000", nil)
-				if err != nil {
-					t.Fatalf("could not create request: %v", err)
+				if tc.name == "InvalidRequest" {
+					req, err = http.NewRequest(http.MethodGet, "localhost:8000?u=hello", nil)
+					if err != nil {
+						t.Fatalf("could not create request: %v", err)
+					}
+				} else if tc.name == "InvalidURL" {
+					req, err = http.NewRequest(http.MethodGet, "localhost:8000?u=http://\\www.google.com//", nil)
+					if err != nil {
+						t.Fatalf("could not create request: %v", err)
+					}
+				} else if tc.name == "RandomURL" {
+					req, err = http.NewRequest(http.MethodGet, "localhost:8000?u=http://www.google.com", nil)
+					if err != nil {
+						t.Fatalf("could not create request: %v", err)
+					}
+				} else {
+					req, err = http.NewRequest(http.MethodGet, "localhost:8000", nil)
+					if err != nil {
+						t.Fatalf("could not create request: %v", err)
+					}
 				}
 			}
 			rec := httptest.NewRecorder()
