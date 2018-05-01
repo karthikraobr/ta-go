@@ -43,7 +43,6 @@ func numberHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		numbers := validateAndFetch(ctx, params)
 		json.NewEncoder(w).Encode(map[string][]int{"numbers": numbers})
-		log.Println("-------------------------------------")
 	}
 }
 
