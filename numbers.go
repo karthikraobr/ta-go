@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -67,6 +68,9 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	//In our case the receiver (main goroutine) might be filtering duplicates from a slice, while other goroutines
 	//send on the buffered channel.
 	ch := make(chan result, len(urls))
+	//An error channel to hold the various errors that might occur while performing the request. For now we just
+	//log it. We can define retry policies such as exponential backoff based on various error types.
+	er := make(chan error, len(urls))
 	//Check if all URLs in the request are valid and if so spawn a goroutine to fetch data.
 	for _, u := range urls {
 		_, err := url.Parse(u)
@@ -74,7 +78,7 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 			log.Printf("%s returned an error- %v", u, err)
 			continue
 		}
-		go fetch(ctx, u, ch)
+		go fetch(ctx, u, ch, er)
 	}
 
 	//Loop to drain channel, filter out duplicates and check for timeout.
@@ -94,6 +98,8 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 			}
 			//After 450ms have elapsed, the context is finished. Done returns a closed channel that signals that
 			//the context was cancelled, which in our case that is a timeout.
+		case err := <-er:
+			log.Println(err)
 		case <-ctx.Done():
 			log.Println(ctx.Err())
 			//Sort and return as soon as the context is finished rather than waiting for other goroutines to be cancelled.
@@ -106,11 +112,11 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	return accumulator
 }
 
-func fetch(ctx context.Context, u string, c chan<- result) {
+func fetch(ctx context.Context, u string, c chan<- result, e chan<- error) {
 	var number result
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
-		log.Printf("%s returned an error while creating a request- %v", u, err)
+		e <- fmt.Errorf("%s returned an error while creating a request- %v", u, err)
 		return
 	}
 	//Perform a request with a context to enable cancellation propagation after 450ms has elapsed.
@@ -118,18 +124,18 @@ func fetch(ctx context.Context, u string, c chan<- result) {
 	req = req.WithContext(ctx)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Printf("%s returned an error while performing a request  - %v", u, err)
+		e <- fmt.Errorf("%s returned an error while performing a request  - %v", u, err)
 		return
 	}
 	//If not 200 log the error.
 	if res.StatusCode > http.StatusOK {
-		log.Printf("%s server returned an error - %v", u, res.Status)
+		e <- fmt.Errorf("%s server returned an error - %v", u, res.Status)
 		return
 	}
 	//Close response body as soon as function returns to prevent resource lekage.
 	defer res.Body.Close()
 	if err := json.NewDecoder(res.Body).Decode(&number); err != nil {
-		log.Printf("%s decoding error - %v", u, err)
+		e <- fmt.Errorf("%s decoding error - %v", u, err)
 		return
 	}
 	c <- number
