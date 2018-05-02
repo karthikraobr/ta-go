@@ -31,6 +31,11 @@ func main() {
 
 //Http handler that handles the /numbers endpoint
 func numberHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("403 - Method not supported!"))
+		return
+	}
 	//Grab the context from the request. Incase a client drops we can cancel all the "tasks"
 	//that were spawned for the client.
 	ctx := r.Context()
@@ -45,16 +50,16 @@ func numberHandler(w http.ResponseWriter, r *http.Request) {
 	params := q["u"]
 	//If there are no "u" query parameters, simply return an empty array.
 	if len(params) == 0 {
-		json.NewEncoder(w).Encode(map[string][]int{"numbers": nil})
+		json.NewEncoder(w).Encode(result{Numbers: []int{}})
 	} else {
 		numbers := validateAndFetch(ctx, params)
-		json.NewEncoder(w).Encode(map[string][]int{"numbers": numbers})
+		json.NewEncoder(w).Encode(result{Numbers: numbers})
 	}
 }
 
 func validateAndFetch(ctx context.Context, urls []string) []int {
 	//Accumulator holds non duplicate values returned by all the URLs.
-	var accumulator []int
+	accumulator := make([]int, 0)
 	//Map to eliminate duplicates across responses. We actually need a set,
 	//but since go doesn't provide a set implementation, we use an empty struct so as
 	//to not waste precious memory :) https://play.golang.org/p/ea_19tva-0T
@@ -71,6 +76,8 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	//An error channel to hold the various errors that might occur while performing the request. For now we just
 	//log it. We can define retry policies such as exponential backoff based on various error types.
 	er := make(chan error, len(urls))
+	//Counter to keep track of number of valid URLs in the request.
+	counter := 0
 	//Check if all URLs in the request are valid and if so spawn a goroutine to fetch data.
 	for _, u := range urls {
 		_, err := url.Parse(u)
@@ -78,11 +85,13 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 			log.Printf("%s returned an error- %v", u, err)
 			continue
 		}
+		counter++
 		go fetch(ctx, u, ch, er)
 	}
 
-	//Loop to drain channel, filter out duplicates and check for timeout.
-	for range urls {
+	//Loop to drain channels, filter out duplicates and check for timeout. A goroutine either fills the
+	//result channel or the error channel.
+	for i := 0; i < counter; i++ {
 		select {
 		case res := <-ch:
 			for _, val := range res.Numbers {
@@ -96,10 +105,10 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 					visited[val] = struct{}{}
 				}
 			}
-			//After 450ms have elapsed, the context is finished. Done returns a closed channel that signals that
-			//the context was cancelled, which in our case that is a timeout.
 		case err := <-er:
 			log.Println(err)
+			//After 450ms have elapsed, the context is finished. Done returns a closed channel that signals that
+			//the context was cancelled, which in our case that is a timeout.
 		case <-ctx.Done():
 			log.Println(ctx.Err())
 			//Sort and return as soon as the context is finished rather than waiting for other goroutines to be cancelled.
@@ -127,13 +136,14 @@ func fetch(ctx context.Context, u string, c chan<- result, e chan<- error) {
 		e <- fmt.Errorf("%s returned an error while performing a request  - %v", u, err)
 		return
 	}
+	//Close response body as soon as function returns to prevent resource lekage.
+	defer res.Body.Close()
+
 	//If not 200 log the error.
-	if res.StatusCode > http.StatusOK {
+	if res.StatusCode != http.StatusOK {
 		e <- fmt.Errorf("%s server returned an error - %v", u, res.Status)
 		return
 	}
-	//Close response body as soon as function returns to prevent resource lekage.
-	defer res.Body.Close()
 	if err := json.NewDecoder(res.Body).Decode(&number); err != nil {
 		e <- fmt.Errorf("%s decoding error - %v", u, err)
 		return

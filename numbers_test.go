@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+const (
+	localhost      = "localhost:8000"
+	invalidRequest = "InvalidRequest"
+	invalidURL     = "InvalidURL"
+	randomURL      = "RandomURL"
+)
+
 func Test_numberHandler(t *testing.T) {
 	actual := []int{1, 1, 2, 3, 5, 8, 13, 21}
 	expected := []int{1, 2, 3, 5, 8, 13, 21}
@@ -17,14 +24,14 @@ func Test_numberHandler(t *testing.T) {
 		expected result
 	}{
 		{name: "Simple", handler: simpleHandler(actual), expected: result{Numbers: expected}},
-		{name: "NoParam", handler: nil, expected: result{Numbers: nil}},
-		{name: "InvalidURL", handler: nil, expected: result{Numbers: nil}},
-		{name: "InvalidRequest", handler: nil, expected: result{Numbers: nil}},
-		{name: "RandomURL", handler: nil, expected: result{Numbers: nil}},
-		{name: "SimpleError", handler: errHandler(), expected: result{Numbers: nil}},
-		{name: "SimpleTimeOut", handler: timeOutHandler(actual), expected: result{Numbers: nil}},
+		{name: "NoParam", handler: nil, expected: result{Numbers: []int{}}},
+		{name: "InvalidURL", handler: nil, expected: result{Numbers: []int{}}},
+		{name: "InvalidRequest", handler: nil, expected: result{Numbers: []int{}}},
+		{name: "RandomURL", handler: nil, expected: result{Numbers: []int{}}},
+		{name: "SimpleError", handler: errHandler(), expected: result{Numbers: []int{}}},
+		{name: "SimpleTimeOut", handler: timeOutHandler(actual), expected: result{Numbers: []int{}}},
 		{name: "JustInTime", handler: justInTimeHandler(actual), expected: result{Numbers: expected}},
-		{name: "ErrorAfterTime", handler: errAfterTimeHandler(), expected: result{Numbers: nil}},
+		{name: "ErrorAfterTime", handler: errAfterTimeHandler(), expected: result{Numbers: []int{}}},
 	}
 
 	for _, tc := range tt {
@@ -34,28 +41,28 @@ func Test_numberHandler(t *testing.T) {
 			if tc.handler != nil {
 				ts := httptest.NewServer(http.HandlerFunc(tc.handler))
 				defer ts.Close()
-				req, err = http.NewRequest(http.MethodGet, "localhost:8000?u="+ts.URL, nil)
+				req, err = http.NewRequest(http.MethodGet, localhost+"?u="+ts.URL, nil)
 				if err != nil {
 					t.Fatalf("could not create request: %v", err)
 				}
 			} else {
-				if tc.name == "InvalidRequest" {
-					req, err = http.NewRequest(http.MethodGet, "localhost:8000?u=hello", nil)
+				if tc.name == invalidRequest {
+					req, err = http.NewRequest(http.MethodGet, localhost+"?u=hello", nil)
 					if err != nil {
 						t.Fatalf("could not create request: %v", err)
 					}
-				} else if tc.name == "InvalidURL" {
-					req, err = http.NewRequest(http.MethodGet, "localhost:8000?u=http://\\www.google.com//", nil)
+				} else if tc.name == invalidURL {
+					req, err = http.NewRequest(http.MethodGet, localhost+"?u=http://\\www.google.com//", nil)
 					if err != nil {
 						t.Fatalf("could not create request: %v", err)
 					}
-				} else if tc.name == "RandomURL" {
-					req, err = http.NewRequest(http.MethodGet, "localhost:8000?u=http://www.google.com", nil)
+				} else if tc.name == randomURL {
+					req, err = http.NewRequest(http.MethodGet, localhost+"?u=http://www.google.com", nil)
 					if err != nil {
 						t.Fatalf("could not create request: %v", err)
 					}
 				} else {
-					req, err = http.NewRequest(http.MethodGet, "localhost:8000", nil)
+					req, err = http.NewRequest(http.MethodGet, localhost, nil)
 					if err != nil {
 						t.Fatalf("could not create request: %v", err)
 					}
