@@ -26,12 +26,12 @@ type result struct {
 func main() {
 	listenAddr := flag.String("http.addr", ":8000", "http listen address")
 	flag.Parse()
-	http.HandleFunc(endpoint, numberHandler)
+	http.HandleFunc(endpoint, numbersHandler)
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))
 }
 
 //Http handler that handles the /numbers endpoint
-func numberHandler(w http.ResponseWriter, r *http.Request) {
+func numbersHandler(w http.ResponseWriter, r *http.Request) {
 	//We support only "GET" method.
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusForbidden)

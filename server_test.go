@@ -76,7 +76,7 @@ func Test_numberHandler(t *testing.T) {
 				}
 			}
 			rec := httptest.NewRecorder()
-			numberHandler(rec, req)
+			numbersHandler(rec, req)
 			res := rec.Result()
 			defer res.Body.Close()
 			if tc.name != forbiddenTest {
