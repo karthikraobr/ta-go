@@ -13,6 +13,7 @@ const (
 	invalidRequest = "InvalidRequest"
 	invalidURL     = "InvalidURL"
 	randomURL      = "RandomURL"
+	forbiddenTest  = "403Test"
 )
 
 func Test_numberHandler(t *testing.T) {
@@ -32,6 +33,7 @@ func Test_numberHandler(t *testing.T) {
 		{name: "SimpleTimeOut", handler: timeOutHandler(actual), expected: result{Numbers: []int{}}},
 		{name: "JustInTime", handler: justInTimeHandler(actual), expected: result{Numbers: expected}},
 		{name: "ErrorAfterTime", handler: errAfterTimeHandler(), expected: result{Numbers: []int{}}},
+		{name: forbiddenTest, handler: nil, expected: result{Numbers: []int{}}},
 	}
 
 	for _, tc := range tt {
@@ -61,6 +63,11 @@ func Test_numberHandler(t *testing.T) {
 					if err != nil {
 						t.Fatalf("could not create request: %v", err)
 					}
+				} else if tc.name == forbiddenTest {
+					req, err = http.NewRequest(http.MethodPost, localhost+"?u=http://www.google.com", nil)
+					if err != nil {
+						t.Fatalf("could not create request: %v", err)
+					}
 				} else {
 					req, err = http.NewRequest(http.MethodGet, localhost, nil)
 					if err != nil {
@@ -72,15 +79,19 @@ func Test_numberHandler(t *testing.T) {
 			numberHandler(rec, req)
 			res := rec.Result()
 			defer res.Body.Close()
-			if res.StatusCode != http.StatusOK {
-				t.Errorf("expected status OK; got %v", res.Status)
-			}
-			var num result
-			if err = json.NewDecoder(res.Body).Decode(&num); err != nil {
-				t.Errorf("could not decode response: %v", err)
-			}
-			if !num.equals(tc.expected) {
-				t.Errorf("expected %v but got %v", tc.expected, num)
+			if tc.name != forbiddenTest {
+				if res.StatusCode != http.StatusOK {
+					t.Fatalf("expected status OK; got %v", res.Status)
+				}
+				var num result
+				if err = json.NewDecoder(res.Body).Decode(&num); err != nil {
+					t.Fatalf("could not decode response: %v", err)
+				}
+				if !num.equals(tc.expected) {
+					t.Errorf("expected %v but got %v", tc.expected, num)
+				}
+			} else if res.StatusCode != http.StatusForbidden {
+				t.Fatalf("expected status forbidden; got %v", res.Status)
 			}
 		})
 	}

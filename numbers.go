@@ -14,7 +14,8 @@ import (
 
 const (
 	//Represents the context timeout. Can be tuned depending on requirements and benchmarks.
-	timeout = 450
+	timeout  = 450
+	endpoint = "/numbers"
 )
 
 //Type which represents the response of the given URLs as well as our response
@@ -25,12 +26,13 @@ type result struct {
 func main() {
 	listenAddr := flag.String("http.addr", ":8000", "http listen address")
 	flag.Parse()
-	http.HandleFunc("/numbers", numberHandler)
+	http.HandleFunc(endpoint, numberHandler)
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))
 }
 
 //Http handler that handles the /numbers endpoint
 func numberHandler(w http.ResponseWriter, r *http.Request) {
+	//We support only "GET" method.
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("403 - Method not supported!"))
@@ -86,10 +88,11 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 			continue
 		}
 		counter++
+		//Spawn a goroutine for each valid URL.
 		go fetch(ctx, u, ch, er)
 	}
 
-	//Loop to drain channels, filter out duplicates and check for timeout. A goroutine either fills the
+	//Loop to drain channels, filter out duplicates and check for timeout. Each goroutine either fills the
 	//result channel or the error channel.
 	for i := 0; i < counter; i++ {
 		select {
