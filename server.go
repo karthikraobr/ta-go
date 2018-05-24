@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"sort"
 	"time"
@@ -14,8 +15,9 @@ import (
 
 const (
 	//Represents the context timeout. Can be tuned depending on requirements and benchmarks.
-	timeout  = 450
-	endpoint = "/numbers"
+	timeout        = 50000
+	endpoint       = "/numbers"
+	maxConnections = 500
 )
 
 //Type which represents the response of the given URLs as well as our response
@@ -50,6 +52,7 @@ func numbersHandler(w http.ResponseWriter, r *http.Request) {
 	q := u.Query()
 	//Get all the query parameters with key "u".
 	params := q["u"]
+	log.Printf("Length of urls is %d\n", len(params))
 	//If there are no "u" query parameters, simply return an empty array.
 	if len(params) == 0 {
 		json.NewEncoder(w).Encode(result{Numbers: []int{}})
@@ -80,6 +83,7 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	er := make(chan error, len(urls))
 	//Counter to keep track of number of valid URLs in the request.
 	counter := 0
+	sem := make(chan struct{}, min(maxConnections, len(urls)))
 	//Check if all URLs in the request are valid and if so spawn a goroutine to fetch data.
 	for _, u := range urls {
 		_, err := url.Parse(u)
@@ -89,7 +93,7 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 		}
 		counter++
 		//Spawn a goroutine for each valid URL.
-		go fetch(ctx, u, ch, er)
+		go fetch(ctx, sem, u, ch, er)
 	}
 
 	//Loop to drain channels, filter out duplicates and check for timeout. Each goroutine either fills the
@@ -109,11 +113,11 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 				}
 			}
 		case err := <-er:
-			log.Println(err)
+			fmt.Println(err)
 			//After 450ms have elapsed, the context is finished. Done returns a closed channel that signals that
 			//the context was cancelled, which in our case that is a timeout.
 		case <-ctx.Done():
-			log.Println(ctx.Err())
+			fmt.Println(ctx.Err())
 			//Sort and return as soon as the context is finished rather than waiting for other goroutines to be cancelled.
 			sort.Ints(accumulator)
 			return accumulator
@@ -124,8 +128,10 @@ func validateAndFetch(ctx context.Context, urls []string) []int {
 	return accumulator
 }
 
-func fetch(ctx context.Context, u string, c chan<- result, e chan<- error) {
+func fetch(ctx context.Context, sem chan struct{}, u string, c chan<- result, e chan<- error) {
 	var number result
+	sem <- struct{}{}
+	defer func() { <-sem }()
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		e <- fmt.Errorf("%s returned an error while creating a request- %v", u, err)
@@ -140,8 +146,8 @@ func fetch(ctx context.Context, u string, c chan<- result, e chan<- error) {
 		return
 	}
 	//Close response body as soon as function returns to prevent resource lekage.
+	//https://golang.org/pkg/net/http/#Response
 	defer res.Body.Close()
-
 	//If not 200 log the error.
 	if res.StatusCode != http.StatusOK {
 		e <- fmt.Errorf("%s server returned an error - %v", u, res.Status)
@@ -151,5 +157,13 @@ func fetch(ctx context.Context, u string, c chan<- result, e chan<- error) {
 		e <- fmt.Errorf("%s decoding error - %v", u, err)
 		return
 	}
+	fmt.Println("success")
 	c <- number
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
