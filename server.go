@@ -6,30 +6,25 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
-	"net"
 	"net/http"
 	_ "net/http/pprof"
-	"net/url"
 	"sort"
 	"time"
 )
 
 const (
-	//Represents the context timeout. Can be tuned depending on requirements and benchmarks.
-	timeout        = 5000000
 	endpoint       = "/numbers"
 	maxConnections = 200
 )
 
-func foo() []string {
-	query := []string{"http://127.0.0.1:8090/fibo", "http://127.0.0.1:8090/rand", "http://127.0.0.1:8090/odd", "http://127.0.0.1:8090/primes"}
-	var res []string
-	for i := 0; i < 10000000; i++ {
-		res = append(res, query[rand.Intn(len(query))])
-	}
-	return res
-}
+// func foo() []string {
+// 	query := []string{"http://127.0.0.1:8090/fibo", "http://127.0.0.1:8090/rand", "http://127.0.0.1:8090/odd", "http://127.0.0.1:8090/primes"}
+// 	var res []string
+// 	for i := 0; i < 10000000; i++ {
+// 		res = append(res, query[rand.Intn(len(query))])
+// 	}
+// 	return res
+// }
 
 //Type which represents the response of the given URLs as well as our response
 type result struct {
@@ -41,71 +36,54 @@ type payload struct {
 	err chan error
 }
 
+var (
+	timeout *time.Duration
+)
+
 func main() {
 	listenAddr := flag.String("http.addr", ":8000", "http listen address")
+	timeout = flag.Duration("timeout", 5000000, "timeout of the request")
 	flag.Parse()
 	http.HandleFunc(endpoint, numbersHandler)
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))
 }
 
-//Http handler that handles the /numbers endpoint
 func numbersHandler(w http.ResponseWriter, r *http.Request) {
-	//We support only "GET" method.
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("403 - Method not supported!"))
 		return
 	}
-	//Grab the context from the request. Incase a client drops we can cancel all the "tasks"
-	//that were spawned for the client.
 	ctx := r.Context()
-	//Since the response needs to be sent on the wire before 500ms, we set the context timeout to 450ms
-	//and use the remaining 50ms to sort the array.
-	ctx, cancel := context.WithTimeout(ctx, timeout*time.Millisecond)
-	//The cancel function signals the gc to collect resources allocated for context timers.
+
+	ctx, cancel := context.WithTimeout(ctx, *timeout*time.Millisecond)
 	defer cancel()
-	//u := r.URL
-	//q := u.Query()
-	//Get all the query parameters with key "u".
-	params := foo()
+	u := r.URL
+	q := u.Query()
+	params := q["u"]
 	log.Printf("Length of urls is %d\n", len(params))
-	//If there are no "u" query parameters, simply return an empty array.
 	if len(params) == 0 {
 		json.NewEncoder(w).Encode(result{Numbers: []int{}})
 	} else {
 		t := &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			MaxIdleConnsPerHost:   maxConnections,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
+			Proxy:               http.ProxyFromEnvironment,
+			MaxIdleConnsPerHost: maxConnections,
 		}
-		ch := make(chan result, len(params))
-		er := make(chan error, len(params))
+		ch := make(chan result, maxConnections)
+		er := make(chan error, maxConnections)
 		p := payload{res: ch, err: er}
-		go validateAndFetch(ctx, t, params, &p)
-		json.NewEncoder(w).Encode(result{Numbers: consume(ctx, &p)})
+		go fetchAll(ctx, t, params, &p)
+		json.NewEncoder(w).Encode(result{Numbers: consume(ctx, len(params), &p)})
 	}
 }
 
-func validateAndFetch(ctx context.Context, t *http.Transport, urls []string, p *payload) {
+func fetchAll(ctx context.Context, t *http.Transport, urls []string, p *payload) {
 	c := make(chan string)
 	// Spin up workers
 	for i := 0; i < maxConnections; i++ {
 		go doWork(ctx, t, c, p)
 	}
-	//Check if all URLs in the request are valid and if so spawn a goroutine to fetch data.
 	for _, u := range urls {
-		_, err := url.Parse(u)
-		if err != nil {
-			log.Printf("%s returned an error- %v", u, err)
-			continue
-		}
 		c <- u
 	}
 	close(c)
@@ -152,10 +130,10 @@ func fetch(ctx context.Context, t *http.Transport, u string, p *payload) {
 	p.res <- number
 }
 
-func consume(ctx context.Context, p *payload) []int {
+func consume(ctx context.Context, count int, p *payload) []int {
 	accumulator := make([]int, 0)
 	visited := make(map[int]struct{})
-	for i := 0; i < 10000000; i++ {
+	for i := 0; i < count; i++ {
 		select {
 		case res := <-p.res:
 			for _, val := range res.Numbers {
