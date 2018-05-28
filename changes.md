@@ -17,7 +17,9 @@ If the number of URLs = 100000, we would be spawning 100000 goroutines of which 
 #### Worker pool
 After some careful deliberation and researching on various go forums and blog posts, the suggested method of solving this problem was to spawn x number of worker goroutines and perform the fetch operation. This ensures that no goroutines waste time waiting and that we do not hit the socket limit or the file descriptor limits. During benchmarking on my laptop, the application successfully handled 100000 URLs and will probably handle more but might take significant time.
 
-PS. I have increased both context timeouts and individual request timeouts to accommodate for the time taken to process a large number of URLs and larger datasets. As a result, some tests in the test table might fail. Also, benchmarks have been added to the test file. 
+PS. I have increased both context timeouts and individual request timeouts to accommodate for the time taken to process a large number of URLs and larger datasets. As a result, some tests in the test table might fail. 
+
+Also, benchmarks have been added to the test file. 
 
 ### De-duplication and sorting
 
@@ -41,7 +43,7 @@ PS. For b-trees and radix sort I used external packages
 
 ### Benchmarks
 
-The benchmarks can be found at https://github.com/karthikraobr/go-sorting-bench. To mimic the problem at hand, a slice of 1 million int values is being split into 10 - 100,000 slices.
+The benchmarks for the sorting algorithms can be found at https://github.com/karthikraobr/go-sorting-bench. To mimic the problem at hand, a slice of 1 million int values is being split into 10 - 100,000 slices.
 
 * filterAndSortOnceDefault - Filters duplicates as and when URLs respond and sorts once all URLs have responded, using the built-in sort package.
 * filterAndSortOnceZermelo - Same as above but uses zermelo radix sort package.
