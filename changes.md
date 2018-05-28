@@ -21,7 +21,7 @@ PS. I have increased both context timeouts and individual request timeouts to ac
 
 ### De-duplication and sorting
 
-Removing duplicates across results returned by the URLs would be a trade-off between time and memory. The time efficient way of doing it is by using a Set(map in our case) which holds distinct elements. The other way of doing this (space efficient) would be by linearly comparing all elements and removing duplicates.
+Filtering duplicates across results returned by the URLs would be a trade-off between time and memory. The time efficient way of doing it is by using a Set(map in our case) which holds distinct elements. The other way of doing this (space efficient) would be by linearly comparing all elements and filtering duplicates.
 
 
 Before discussing the sorting techniques, the question about when to sort should be handled.
@@ -31,7 +31,7 @@ Before discussing the sorting techniques, the question about when to sort should
 
 The following approaches were considered to tackle the problem of sorting
 * built-in sort package - Uses a combination of quicksort, shellsort and insertionsort. Generalized algorithm hence performs well in most general cases. O(nlogn)
-* radix sort - Works best on integers. Sorts by comparing each digit of a number. Might perform badly if the number of digits in a number is huge. This is because radix sort performs a "sorting pass" for each digit in the numbers of the data set. O(kn) where is the number of digits in the largest number.
+* radix sort - Works best on integers. Sorts by comparing each digit of a number. Might perform badly if the number of digits in a number is huge. This is because radix sort performs a "sorting pass" which uses counting sort for each digit in the numbers of the data set. O(kn) where k is the number of digits in the largest number.
 * heapsort - Gets instant access to the largest/smallest element in O(1). Was curious how a heap would perform in our case. 
 * b-trees - Automatic sorting and de-duplicating of elements.
 
@@ -41,14 +41,14 @@ PS. For b-trees and radix sort I used external packages
 
 ### Benchmarks
 
-The benchmarks can be found at https://github.com/karthikraobr/go-sorting-bench. To mimic the problem at hand, a slice of 1 million int values is being split into 10 - 100,000 slices and then duplicates are filtered out.
+The benchmarks can be found at https://github.com/karthikraobr/go-sorting-bench. To mimic the problem at hand, a slice of 1 million int values is being split into 10 - 100,000 slices.
 
 * filterAndSortOnceDefault - Filters duplicates as and when URLs respond and sorts once all URLs have responded, using the built-in sort package.
 * filterAndSortOnceZermelo - Same as above but uses zermelo radix sort package.
 * filterAndContinuousSortDefault - Filters duplicates as and when URLs respond and sort them on a per-URL basis. Sort uses built-in sort package.
 * filterAndContinuousSortZermelo - Same as above but uses zermelo radix sort package.
 * heapsort - Filter duplicates and push into a heap. Then pop one element at a time.
-* btree - Push each element of the URL responses into a tree. De-duplication and sorting is taking care by the implementation.
+* btree - Push each element of the URL responses into a tree. De-duplication and sorting is taken care by the implementation.
 
 | Name        | Count           | Time taken  | Memory
 | ------------- |:-------------:| -----:|-----:|
