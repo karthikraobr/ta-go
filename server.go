@@ -34,8 +34,8 @@ type payload struct {
 }
 
 func main() {
-	listenAddr := flag.String("http.addr", ":8000", "http listen address")
-	flag.Parse()
+listenAddr := flag.String("http.addr", ":8000", "http listen address")
+flag.Parse()
 	http.HandleFunc(endpoint, numbersHandler)
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))
 }
